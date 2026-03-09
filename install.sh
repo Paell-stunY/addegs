@@ -2,8 +2,11 @@
 
 # ============================================================
 #   AUTO UPLOAD EGG - Pterodactyl Panel
-#   Taruh script ini se-folder sama folder "egg/"
+#   Egg source: github.com/Paell-stunY/addegs
 # ============================================================
+
+GITHUB_API="https://api.github.com/repos/Paell-stunY/addegs/contents/egg"
+GITHUB_RAW="https://raw.githubusercontent.com/Paell-stunY/addegs/main/egg"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,6 +20,7 @@ clear
 echo -e "${CYAN}${BOLD}"
 echo "╔══════════════════════════════════════════╗"
 echo "║      AUTO UPLOAD EGG - PTERODACTYL      ║"
+echo "║    Source: github.com/Paell-stunY/addegs ║"
 echo "╚══════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -29,7 +33,7 @@ for dep in curl jq; do
 done
 echo -e "${GREEN}[✓] Dependencies OK${NC}\n"
 
-# ─── INPUT INTERAKTIF ────────────────────────────────────────
+# ─── INPUT ───────────────────────────────────────────────────
 echo -e "${CYAN}${BOLD}[?] Masukkan konfigurasi panel:${NC}"
 echo -e "${DIM}────────────────────────────────────────────${NC}"
 
@@ -53,44 +57,42 @@ while true; do
   echo -e "  ${RED}[!] Nest ID harus angka${NC}"
 done
 
-# Folder egg relatif ke lokasi script
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EGG_PATH="$SCRIPT_DIR/egg"
-
 echo ""
 echo -e "${DIM}────────────────────────────────────────────${NC}"
 echo -e "    Panel URL  : ${PANEL_URL}"
 echo -e "    API Key    : ${API_KEY:0:10}**********"
 echo -e "    Nest ID    : ${NEST_ID}"
-echo -e "    Folder egg : ${EGG_PATH}"
+echo -e "    Egg Source : github.com/Paell-stunY/addegs/egg"
 echo -e "${DIM}────────────────────────────────────────────${NC}\n"
 
 read -rp "$(echo -e "${YELLOW}Lanjut upload? (y/n): ${NC}")" CONFIRM
 [[ ! "$CONFIRM" =~ ^[Yy]$ ]] && echo -e "${RED}Dibatalkan.${NC}" && exit 0
 
 echo ""
+TEMP_DIR=$(mktemp -d)
+SUCCESS=0; FAILED=0; SKIPPED=0
 
-# ─── CEK FOLDER EGG ──────────────────────────────────────────
-if [[ ! -d "$EGG_PATH" ]]; then
-  echo -e "${RED}[✗] Folder 'egg/' tidak ditemukan di ${SCRIPT_DIR}"
-  echo -e "    Pastiin struktur foldernya:${NC}"
-  echo -e "    ${DIM}."
-  echo -e "    ├── auto_upload_eggs.sh"
-  echo -e "    └── egg/"
-  echo -e "        ├── egg-satu.json"
-  echo -e "        └── egg-dua.json${NC}"
+# ─── AMBIL DAFTAR EGG DARI GITHUB ────────────────────────────
+echo -e "${YELLOW}[*] Mengambil daftar egg dari GitHub...${NC}"
+GITHUB_LISTING=$(curl -s "$GITHUB_API")
+
+if echo "$GITHUB_LISTING" | jq -e 'type == "array"' &>/dev/null; then
+  mapfile -t EGG_NAMES < <(echo "$GITHUB_LISTING" | jq -r '.[] | select(.name | endswith(".json")) | .name')
+else
+  echo -e "${RED}[✗] Gagal ambil daftar egg dari GitHub!"
+  echo -e "    Cek koneksi internet atau repo mungkin private.${NC}"
+  rm -rf "$TEMP_DIR"
   exit 1
 fi
 
-mapfile -t EGG_FILES < <(find "$EGG_PATH" -maxdepth 2 -name "*.json" | sort)
-TOTAL=${#EGG_FILES[@]}
-
+TOTAL=${#EGG_NAMES[@]}
 if [[ $TOTAL -eq 0 ]]; then
-  echo -e "${RED}[✗] Tidak ada file .json di folder egg/${NC}"
+  echo -e "${RED}[✗] Tidak ada file .json ditemukan di repo!${NC}"
+  rm -rf "$TEMP_DIR"
   exit 1
 fi
 
-echo -e "${GREEN}[✓] Ditemukan ${BOLD}${TOTAL}${NC}${GREEN} file egg${NC}\n"
+echo -e "${GREEN}[✓] Ditemukan ${BOLD}${TOTAL}${NC}${GREEN} file egg di GitHub${NC}\n"
 
 # ─── CEK KONEKSI KE PANEL ────────────────────────────────────
 echo -e "${YELLOW}[*] Mengecek koneksi ke panel...${NC}"
@@ -101,10 +103,11 @@ HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
 
 if [[ "$HTTP_STATUS" != "200" ]]; then
   echo -e "${RED}[✗] Gagal konek ke panel (HTTP $HTTP_STATUS)"
-  echo -e "    Cek lagi URL, API Key, dan Nest ID lo!${NC}"
+  echo -e "    Cek lagi URL, API Key, dan Nest ID!${NC}"
+  rm -rf "$TEMP_DIR"
   exit 1
 fi
-echo -e "${GREEN}[✓] Koneksi berhasil!${NC}\n"
+echo -e "${GREEN}[✓] Koneksi ke panel berhasil!${NC}\n"
 
 # ─── AMBIL EGG EXISTING ──────────────────────────────────────
 EXISTING_NAMES=$(curl -s \
@@ -113,39 +116,43 @@ EXISTING_NAMES=$(curl -s \
   "${PANEL_URL}/api/application/nests/${NEST_ID}/eggs" \
   | jq -r '.data[].attributes.name' 2>/dev/null)
 
-# ─── UPLOAD ──────────────────────────────────────────────────
-SUCCESS=0; FAILED=0; SKIPPED=0
-
-echo -e "${CYAN}${BOLD}[*] Mulai upload...${NC}"
+# ─── DOWNLOAD & UPLOAD ───────────────────────────────────────
+echo -e "${CYAN}${BOLD}[*] Mulai download & upload...${NC}"
 echo -e "${DIM}────────────────────────────────────────────${NC}"
 
-for EGG_FILE in "${EGG_FILES[@]}"; do
-  FILENAME=$(basename "$EGG_FILE")
+for EGG_NAME in "${EGG_NAMES[@]}"; do
+  # Download egg dari GitHub
+  RAW_URL="${GITHUB_RAW}/${EGG_NAME}"
+  TMP_FILE="${TEMP_DIR}/${EGG_NAME}"
 
-  if ! jq empty "$EGG_FILE" 2>/dev/null; then
-    echo -e "  ${YELLOW}[~] SKIP${NC} $FILENAME ${DIM}(JSON tidak valid)${NC}"
+  curl -s "$RAW_URL" -o "$TMP_FILE"
+
+  # Validasi JSON
+  if ! jq empty "$TMP_FILE" 2>/dev/null; then
+    echo -e "  ${YELLOW}[~] SKIP${NC} $EGG_NAME ${DIM}(JSON tidak valid)${NC}"
     ((SKIPPED++)); continue
   fi
 
-  EGG_NAME=$(jq -r '.name // empty' "$EGG_FILE")
-  META_VER=$(jq -r '.meta.version // "PTDL_v1"' "$EGG_FILE")
+  NAME=$(jq -r '.name // empty' "$TMP_FILE")
+  META_VER=$(jq -r '.meta.version // "PTDL_v1"' "$TMP_FILE")
 
-  if [[ -z "$EGG_NAME" ]]; then
-    echo -e "  ${YELLOW}[~] SKIP${NC} $FILENAME ${DIM}(nama egg tidak ditemukan)${NC}"
+  if [[ -z "$NAME" ]]; then
+    echo -e "  ${YELLOW}[~] SKIP${NC} $EGG_NAME ${DIM}(nama egg tidak ditemukan)${NC}"
     ((SKIPPED++)); continue
   fi
 
-  if echo "$EXISTING_NAMES" | grep -qFx "$EGG_NAME"; then
-    echo -e "  ${YELLOW}[~] SKIP${NC} '${EGG_NAME}' ${DIM}(sudah ada)${NC}"
+  # Cek duplikat
+  if echo "$EXISTING_NAMES" | grep -qFx "$NAME"; then
+    echo -e "  ${YELLOW}[~] SKIP${NC} '${NAME}' ${DIM}(sudah ada di panel)${NC}"
     ((SKIPPED++)); continue
   fi
 
-  echo -ne "  ${CYAN}[↑]${NC} '${BOLD}${EGG_NAME}${NC}' ${DIM}[${META_VER}]${NC}... "
+  echo -ne "  ${CYAN}[↑]${NC} '${BOLD}${NAME}${NC}' ${DIM}[${META_VER}]${NC}... "
 
   RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Authorization: Bearer $API_KEY" \
     -H "Accept: application/json" \
-    -F "import_file=@${EGG_FILE};type=application/json" \
+    -F "import_file=@${TMP_FILE};type=application/json" \
     "${PANEL_URL}/api/application/nests/${NEST_ID}/eggs/import")
 
   HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
@@ -160,6 +167,8 @@ for EGG_FILE in "${EGG_FILES[@]}"; do
     ((FAILED++))
   fi
 done
+
+rm -rf "$TEMP_DIR"
 
 # ─── SUMMARY ─────────────────────────────────────────────────
 echo ""

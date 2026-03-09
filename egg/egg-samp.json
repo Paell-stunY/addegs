@@ -1,0 +1,62 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2024-10-07T22:29:42-04:00",
+    "name": "\u00bb SAMP",
+    "author": "daniscript18@outlook.com",
+    "description": "SAN ANDREAS MULTIPLAYER \u2014 AMD & ARM",
+    "features": null,
+    "docker_images": {
+        "SAMP": "ghcr.io\/daniscript18\/yolks:samp"
+    },
+    "file_denylist": [],
+    "startup": ".\/start.sh {{SERVER_PORT}} {{MAX_PLAYERS}} {{SAMPVOICE}} {{SAMPVOICE_PORT}}",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": \"Started server on \"\r\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!\/bin\/bash\r\n\r\ncd \/tmp || exit\r\n\r\nwget https:\/\/www.gta-multiplayer.cz\/downloads\/samp037svr_R2-2-1.tar.gz\r\n\r\nmkdir -p \/mnt\/server\r\ntar -xzvf samp037svr_R2-2-1.tar.gz --strip-components=1 -C \/mnt\/server\/\r\n\r\ncd \/mnt\/server || exit\r\n\r\nsed -i '3d' \/mnt\/server\/server.cfg\r\necho \"rcon_password changeplease\" >> \/mnt\/server\/server.cfg\r\n\r\nchown -R root:root \/mnt\r\n\r\nexport HOME=\/mnt\/server",
+            "container": "ghcr.io\/parkervcp\/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "MAX_PLAYERS",
+            "description": "",
+            "env_variable": "MAX_PLAYERS",
+            "default_value": "50",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer|between:1,1000",
+            "field_type": "text"
+        },
+        {
+            "name": "SAMPVOICE",
+            "description": "Only sampvoice version 4.0^",
+            "env_variable": "SAMPVOICE",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "SAMPVOICE_PORT",
+            "description": "",
+            "env_variable": "SAMPVOICE_PORT",
+            "default_value": "2020",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": "required|integer",
+            "field_type": "text"
+        }
+    ]
+}
